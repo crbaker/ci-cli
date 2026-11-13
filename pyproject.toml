@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ci-cli"
+version = "0.1.0"
+description = "Terminal dashboard of Bitbucket repositories and their recent pipelines"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "rich>=13.7",
+    "typer>=0.12",
+    "textual>=0.80",
+    "keyring>=25",
+    "tomli>=2; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.10"]
+
+[project.scripts]
+ci-cli = "ci_cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["ci_cli*"]
