@@ -1,6 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build with:  pyinstaller ci-cli.spec
-# Output:      dist/ci-cli  (a single self-contained executable)
+# Output:      dist/ci-cli/  (a folder; run dist/ci-cli/ci-cli)
+#
+# This is deliberately a one-folder build, not --onefile. A one-file executable
+# unpacks ~900 files (60+ native libraries) into a fresh temp directory on every
+# launch, and macOS scans each newly seen library before it can load, which made
+# startup take ~6s. A one-folder build is unpacked once, so after the first run
+# it starts in ~0.2s.
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
@@ -45,9 +51,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="ci-cli",
     debug=False,
     bootloader_ignore_signals=False,
@@ -61,4 +66,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="ci-cli",
 )

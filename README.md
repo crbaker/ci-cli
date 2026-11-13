@@ -14,15 +14,17 @@ pip install -e .
 
 ## Build a standalone executable
 
-[PyInstaller](https://pyinstaller.org) bundles the app and its Python runtime into one file, so it runs on machines without Python:
+[PyInstaller](https://pyinstaller.org) bundles the app and its Python runtime into a folder, so it runs on machines without Python:
 
 ```sh
 pip install -e '.[build]'
 pyinstaller --noconfirm --clean ci-cli.spec
-./dist/ci-cli -h
+./dist/ci-cli/ci-cli -h
 ```
 
-The result is `dist/ci-cli` (about 21 MB). PyInstaller doesn't cross-compile: the executable runs only on the OS and CPU architecture it was built on, so build on each platform you want to ship. `build/` and `dist/` are generated output and can be deleted.
+The result is the `dist/ci-cli/` folder (about 45 MB): the `ci-cli` executable plus an `_internal/` folder it needs beside it. Ship or install the whole folder, and put a symlink to `ci-cli` on your `PATH` to run it from anywhere. PyInstaller doesn't cross-compile: the build runs only on the OS and CPU architecture it was built on, so build on each platform you want to ship. `build/` and `dist/` are generated output and can be deleted.
+
+The spec makes a one-folder build rather than a single file on purpose. A single-file executable unpacks its ~900 bundled files into a new temporary folder on every launch, and macOS scans each newly seen native library before loading it, so every start took about 6 seconds. The folder is unpacked once: the first launch still takes a few seconds while macOS scans it, and later launches take about 0.2 seconds.
 
 The spec file gathers all of Textual, Rich and Pygments because they import widgets, lexers and data files at runtime, which PyInstaller's import scanning can't see. It also bundles keyring's backends and package metadata, because keyring finds its backends through entry points. Without them the executable couldn't use the system keychain. `packaging/launcher.py` is the entry script, because PyInstaller can't start from `ci_cli/main.py` directly (it uses package-relative imports).
 
