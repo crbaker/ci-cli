@@ -55,7 +55,7 @@ class RepoItem(ListItem):
 
 
 class CIApp(App):
-    TITLE = "Bitbucket pipelines"
+    TITLE = "Bitbucket Pipelines"
     CSS = """
     #sidebar {
         width: 22%;

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 import typer
@@ -138,8 +140,34 @@ def browse(
 
     from .app import CIApp
 
-    CIApp(client, ws, pipelines_per_repo=pipelines, interval=interval,
-          workers=workers, limit=limit).run()
+    with terminal_title(APP_NAME):
+        CIApp(client, ws, pipelines_per_repo=pipelines, interval=interval,
+              workers=workers, limit=limit).run()
+
+
+APP_NAME = "Bitbucket Pipelines"
+
+
+@contextmanager
+def terminal_title(title: str) -> Iterator[None]:
+    """Show `title` in the terminal's window or tab while the block runs.
+
+    Uses the xterm escape codes, which Warp, iTerm2, Terminal.app and most
+    others understand: save the current title on the terminal's title stack,
+    set ours (OSC 0), then restore the saved one when the app exits. Terminals
+    without a title stack ignore the save and restore codes.
+    """
+    out = sys.__stdout__
+    if out is None or not out.isatty():
+        yield
+        return
+    out.write(f"\x1b[22;0t\x1b]0;{title}\x07")
+    out.flush()
+    try:
+        yield
+    finally:
+        out.write("\x1b[23;0t")
+        out.flush()
 
 
 NO_CREDENTIALS_HINT = (
