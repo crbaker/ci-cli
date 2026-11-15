@@ -15,7 +15,7 @@ from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Footer, Header, Input, Label, ListItem, ListView, Static
 from textual.worker import get_current_worker
 
-from .bitbucket import BitbucketClient, BitbucketError, Pipeline, Repo, Step
+from .bitbucket import Branch, BitbucketClient, BitbucketError, Pipeline, Repo, Step
 
 from .ui import STATUS_STYLE, fmt_duration, fmt_when, shorten, status_text
 
@@ -70,9 +70,11 @@ class CIApp(App):
     #detail { padding: 0 1; }
     #repo-title { text-style: bold; padding: 1 0 0 0; }
     #repo-meta { color: $text-muted; padding: 0 0 1 0; }
-    #pipelines { height: auto; max-height: 50%; }
+    #pipelines { height: auto; max-height: 40%; }
     #steps-title { text-style: bold; padding: 1 0 0 0; }
     #steps { height: 1fr; }
+    #branches-title { text-style: bold; padding: 1 0 0 0; }
+    #branches { height: auto; max-height: 30%; }
     #placeholder { color: $text-muted; padding: 2 2; }
     .hidden { display: none; }
     """
@@ -95,6 +97,7 @@ class CIApp(App):
         interval: int = 30,
         workers: int = 8,
         limit: int | None = None,
+        branches_per_repo: int = 10,
     ) -> None:
         super().__init__()
         self.client = client
@@ -103,6 +106,8 @@ class CIApp(App):
         self.interval = interval
         self.max_workers = workers
         self.limit = limit
+        self.branch_count = branches_per_repo
+        self.branches: list[Branch] = []
         self.repos: list[Repo] = []
         self.items: dict[str, RepoItem] = {}
         self.selected: Repo | None = None
@@ -131,6 +136,8 @@ class CIApp(App):
                 yield DataTable(id="pipelines", cursor_type="row", zebra_stripes=True, classes="hidden")
                 yield Static("Steps", id="steps-title", classes="hidden")
                 yield DataTable(id="steps", cursor_type="none", classes="hidden")
+                yield Static("Recent commits by branch", id="branches-title", classes="hidden")
+                yield DataTable(id="branches", cursor_type="none", zebra_stripes=True, classes="hidden")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -138,6 +145,8 @@ class CIApp(App):
         pipelines.add_columns("#", "Status", "Branch", "Commit", "Triggered by", "Started", "Duration", "Steps")
         steps = self.query_one("#steps", DataTable)
         steps.add_columns("Step", "Status", "Duration")
+        branches = self.query_one("#branches", DataTable)
+        branches.add_columns("Branch", "Commit", "Message", "Author", "Date")
         self.query_one("#repo-list", ListView).focus()
         self.load_repos()
         self.set_interval(1, self.tick)
@@ -198,6 +207,18 @@ class CIApp(App):
         if get_current_worker().is_cancelled:
             return
         self.call_from_thread(self.set_pipelines, repo, pipelines, error)
+
+    @work(thread=True, exclusive=True, group="branches")
+    def load_branches(self, repo: Repo) -> None:
+        try:
+            branches = self.client.recent_branches(repo.full_name, self.branch_count)
+            error = None
+        except BitbucketError as exc:
+            branches = []
+            error = str(exc)
+        if get_current_worker().is_cancelled:
+            return
+        self.call_from_thread(self.set_branches, repo, branches, error)
 
     @work(thread=True, exclusive=True, group="steps")
     def load_steps(self, repo: Repo, pipeline: Pipeline) -> None:
@@ -268,13 +289,20 @@ class CIApp(App):
         self.steps = []
         self.steps_for = None
         self.query_one("#placeholder").add_class("hidden")
-        for wid in ("#repo-title", "#repo-meta", "#pipelines", "#steps-title", "#steps"):
+        self.branches = []
+        for wid in ("#repo-title", "#repo-meta", "#pipelines", "#steps-title", "#steps",
+                    "#branches-title", "#branches"):
             self.query_one(wid).remove_class("hidden")
         self.query_one("#repo-title", Static).update(repo.full_name)
         self.query_one("#repo-meta", Static).update("Loading pipelines…")
         self.query_one("#pipelines", DataTable).clear()
         self.query_one("#steps", DataTable).clear()
+        self.query_one("#branches-title", Static).update("Recent commits by branch")
+        branches = self.query_one("#branches", DataTable)
+        branches.clear()
+        branches.add_row(Text("loading…", style="dim"), "", "", "", "")
         self.load_pipelines(repo)
+        self.load_branches(repo)
 
     def set_pipelines(self, repo: Repo, pipelines: list[Pipeline], error: str | None) -> None:
         if repo is not self.selected:
@@ -353,6 +381,33 @@ class CIApp(App):
         for row in rows:
             table.add_row(*row)
 
+    def set_branches(self, repo: Repo, branches: list[Branch], error: str | None) -> None:
+        if repo is not self.selected:
+            return
+        self.branches = branches
+        table = self.query_one("#branches", DataTable)
+        table.clear()
+        if error:
+            table.add_row(Text(f"Couldn't load branches: {error}", style="yellow"), "", "", "", "")
+            return
+        if not branches:
+            table.add_row(Text("no branches", style="dim"), "", "", "", "")
+            return
+        self.query_one("#branches-title", Static).update(
+            f"Recent commits by branch · {len(branches)} most recently updated "
+            f"branch{'es' if len(branches) != 1 else ''}"
+        )
+        for b in branches:
+            c = b.commit
+            author = (c.author or "").split(" <")[0]  # drop the email from raw "Name <email>"
+            table.add_row(
+                Text(shorten(b.name, 28), style="bold"),
+                c.hash[:7],
+                shorten(c.message.splitlines()[0] if c.message else "", 60),
+                shorten(author, 20),
+                fmt_when(c.date),
+            )
+
     # -- timers --------------------------------------------------------------
 
     def tick(self) -> None:
@@ -365,6 +420,7 @@ class CIApp(App):
     def periodic_refresh(self) -> None:
         if self.selected is not None:
             self.load_pipelines(self.selected)
+            self.load_branches(self.selected)
         self.refresh_running_statuses()
 
     # -- events --------------------------------------------------------------
@@ -417,6 +473,7 @@ class CIApp(App):
         self.load_repos()
         if self.selected is not None:
             self.load_pipelines(self.selected)
+            self.load_branches(self.selected)
 
     def action_open_browser(self) -> None:
         repo = self.selected

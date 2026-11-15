@@ -123,6 +123,12 @@ class CommitInfo:
 
 
 @dataclass
+class Branch:
+    name: str
+    commit: CommitInfo
+
+
+@dataclass
 class FailedTest:
     name: str
     status: str
@@ -196,6 +202,17 @@ def _parse_pipeline(item: dict) -> Pipeline:
         pr_destination=target.get("destination"),
         build_seconds_used=item.get("build_seconds_used"),
         run_number=item.get("run_number"),
+    )
+
+
+def _parse_commit(data: dict, fallback_hash: str = "") -> CommitInfo:
+    author = data.get("author") or {}
+    name = (author.get("user") or {}).get("display_name") or author.get("raw")
+    return CommitInfo(
+        hash=data.get("hash") or fallback_hash,
+        message=(data.get("message") or "").strip(),
+        author=name,
+        date=_parse_dt(data.get("date")),
     )
 
 
@@ -346,15 +363,15 @@ class BitbucketClient:
         pipeline.steps_done = sum(1 for s in steps if s.state == "COMPLETED")
 
     def get_commit(self, full_name: str, commit_hash: str) -> CommitInfo:
-        data = self._get(f"/repositories/{full_name}/commit/{commit_hash}")
-        author = data.get("author") or {}
-        name = (author.get("user") or {}).get("display_name") or author.get("raw")
-        return CommitInfo(
-            hash=data.get("hash", commit_hash),
-            message=(data.get("message") or "").strip(),
-            author=name,
-            date=_parse_dt(data.get("date")),
-        )
+        return _parse_commit(self._get(f"/repositories/{full_name}/commit/{commit_hash}"), commit_hash)
+
+    def recent_branches(self, full_name: str, count: int = 10) -> list[Branch]:
+        """Branches ordered by their latest commit, newest first, with that commit."""
+        branches = []
+        params = {"sort": "-target.date", "pagelen": min(count, 100)}
+        for item in self._paginate(f"/repositories/{full_name}/refs/branches", params, limit=count):
+            branches.append(Branch(item.get("name", ""), _parse_commit(item.get("target") or {})))
+        return branches
 
     def step_log(self, full_name: str, pipeline_uuid: str, step_uuid: str,
                  offset: int = 0) -> tuple[str, int, bool]:

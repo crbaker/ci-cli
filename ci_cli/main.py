@@ -103,6 +103,12 @@ def browse(
                      help="Recent pipelines to show for the selected repository.",
                      rich_help_panel=DISPLAY),
     ] = 3,
+    branches: Annotated[
+        int,
+        typer.Option("--branches", "-b", min=1, max=100,
+                     help="Most recently updated branches to show, with their latest commit.",
+                     rich_help_panel=DISPLAY),
+    ] = 10,
     limit: Annotated[
         int | None,
         typer.Option("--limit", "-l", min=1,
@@ -142,7 +148,7 @@ def browse(
 
     with terminal_title(APP_NAME):
         CIApp(client, ws, pipelines_per_repo=pipelines, interval=interval,
-              workers=workers, limit=limit).run()
+              workers=workers, limit=limit, branches_per_repo=branches).run()
 
 
 APP_NAME = "Bitbucket Pipelines"

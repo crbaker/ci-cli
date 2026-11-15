@@ -116,12 +116,13 @@ An option beats its variable, and both beat the stored value. When the key comes
 ci-cli                       # start the app
 ci-cli -w my-workspace       # choose the workspace
 ci-cli -n 10                 # show the last 10 pipelines instead of 3
+ci-cli -b 20                 # show the 20 most recently updated branches instead of 10
 ci-cli -i 10                 # auto-refresh every 10s
 ci-cli --limit 50            # only list the 50 most recently updated repos
 ci-cli -h                    # full help
 ```
 
-Repositories are listed down the left. Choose one with the arrow keys and press <kbd>Enter</kbd> to see its recent pipelines on the right; the steps of the highlighted pipeline appear underneath.
+Repositories are listed down the left. Choose one with the arrow keys and press <kbd>Enter</kbd> to see its recent pipelines on the right; the steps of the highlighted pipeline appear underneath, followed by the most recently updated branches with each one's latest commit (hash, message, author and date).
 
 ---
 
@@ -164,7 +165,7 @@ The screen opens on the step you're most likely to want: the failed step, otherw
 
 ## 🔄 Refreshing
 
-The pipelines on the right refresh every `--interval` seconds, and the durations of running pipelines and steps tick every second. Status icons in the list are loaded once at startup. After that, only repos whose latest pipeline is still running are re-checked, which keeps API usage low with many repositories. Press <kbd>r</kbd> to reload everything.
+The pipelines and branches on the right refresh every `--interval` seconds, and the durations of running pipelines and steps tick every second. Status icons in the list are loaded once at startup. After that, only repos whose latest pipeline is still running are re-checked, which keeps API usage low with many repositories. Press <kbd>r</kbd> to reload everything.
 
 ---
 
